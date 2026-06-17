@@ -91,7 +91,7 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="card bg-warning text-dark shadow-sm border-0">
             <div class="card-body">
                 <h5 class="card-title">Quick Action</h5>
-                <a href="add_booking.php" class="btn btn-dark mt-2"><i class="fas fa-plus"></i> Add New Tour</a>
+                <a href="add_booking.php" class="btn btn-dark mt-2"><i class="fas fa-plus"></i> Add New Booking</a>
             </div>
         </div>
     </div>
@@ -99,7 +99,7 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3">
-        <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i> <?= $card_label ?> Tour Schedule</h5>
+        <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i> <?= $card_label ?> Booking Schedule</h5>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
