@@ -1,4 +1,8 @@
+
 <?php
+require_once 'auth_check.php';
+// All three roles are allowed on this page
+restrict_to_roles(['super_admin', 'manager', 'normal_user']);
 require_once 'db_connect.php';
 include 'sidebar.php'; 
 
@@ -9,13 +13,16 @@ $params = [];
 $overview_title = "";
 $card_label = "";
 
-// Set queries based on timeframe filter
+// SMART DATE EXPRESSION: Tells MySQL to understand both "MM/DD/YYYY" (from CSV) and "YYYY-MM-DD" (from forms)
+$date_expr = "COALESCE(STR_TO_DATE(BookingDate, '%c/%e/%Y'), STR_TO_DATE(BookingDate, '%Y-%m-%d'), BookingDate)";
+
+// Set queries based on timeframe filter using the smart date expression
 switch ($filter) {
     case 'month':
         $overview_title = "This Month's Overview";
         $date_badge = date('F Y'); 
         $card_label = "This Month's";
-        $sql_condition = "MONTH(STR_TO_DATE(BookingDate, '%c/%e/%Y')) = :month AND YEAR(STR_TO_DATE(BookingDate, '%c/%e/%Y')) = :year";
+        $sql_condition = "MONTH($date_expr) = :month AND YEAR($date_expr) = :year";
         $params = [':month' => date('n'), ':year' => date('Y')];
         break;
     
@@ -23,17 +30,18 @@ switch ($filter) {
         $overview_title = "This Year's Overview";
         $date_badge = date('Y'); 
         $card_label = "This Year's";
-        $sql_condition = "YEAR(STR_TO_DATE(BookingDate, '%c/%e/%Y')) = :year";
+        $sql_condition = "YEAR($date_expr) = :year";
         $params = [':year' => date('Y')];
         break;
 
     case 'today':
     default:
         $overview_title = "Today's Overview";
-        $date_badge = date('n/j/Y'); 
+        $date_badge = date('F j, Y'); // Formatted nicely for the dashboard header
         $card_label = "Today's";
-        $sql_condition = "BookingDate = :today";
-        $params = [':today' => date('n/j/Y')];
+        // Compare the actual calendar date, avoiding text-match errors
+        $sql_condition = "DATE($date_expr) = :today";
+        $params = [':today' => date('Y-m-d')];
         $filter = 'today'; 
         break;
 }
@@ -43,8 +51,8 @@ $dash_stmt = $conn->prepare("SELECT COUNT(*) as total_books, SUM(Pax) as total_p
 $dash_stmt->execute($params);
 $dash_data = $dash_stmt->fetch(PDO::FETCH_ASSOC);
 
-// 2. Get the actual list of tours for the selected timeframe
-$list_stmt = $conn->prepare("SELECT * FROM tbl_booking WHERE $sql_condition ORDER BY STR_TO_DATE(BookingDate, '%c/%e/%Y') ASC");
+// 2. Get the actual list of tours for the selected timeframe (Sorted by the smart date)
+$list_stmt = $conn->prepare("SELECT * FROM tbl_booking WHERE $sql_condition ORDER BY $date_expr ASC");
 $list_stmt->execute($params);
 $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -96,24 +104,25 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover table-striped mb-0">
-                <thead class="table-dark">
+                <thead class="table-primary">
                     <tr>
                         <th>Date</th>
                         <th>Tour Company</th>
                         <th>Meal</th>
                         <th>Pax</th>
-                        <th>Guide Info</th> <th>Status</th>
+                        <th>Guide Info</th> 
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (count($active_tours) > 0): ?>
                         <?php foreach ($active_tours as $tour): ?>
                         <tr>
-                            <td><?= htmlspecialchars($tour['BookingDate']) ?></td>
+                            <td><?= date('l, d-m-Y', strtotime($tour['BookingDate'])) ?></td>
                             <td><strong class="text-primary"><?= htmlspecialchars($tour['TourCompany']) ?></strong></td>
                             <td>
                                 <?php if($tour['Meal'] == 'Lunch'): ?>
-                                    <span class="badge bg-info text-dark"><i class="fas fa-sun me-1"></i> Lunch</span>
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-sun me-1"></i> Lunch</span>
                                 <?php else: ?>
                                     <span class="badge bg-dark"><i class="fas fa-moon me-1"></i> Dinner</span>
                                 <?php endif; ?>
@@ -127,9 +136,9 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <td>
                                 <?php if(trim($tour['Confirm']) == 'True'): ?>
-                                    <span class="badge bg-success">Confirmed</span>
+                                    <span class="badge bg-success"><i class="fas fa-check me-1"></i> Confirmed</span>
                                 <?php else: ?>
-                                    <span class="badge bg-danger">Pending</span>
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> Pending</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
