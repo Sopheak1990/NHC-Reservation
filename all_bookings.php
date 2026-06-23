@@ -4,8 +4,11 @@ require_once 'auth_check.php';
 // All three roles are allowed on this page
 restrict_to_roles(['super_admin', 'manager', 'normal_user']);
 
+// Determine if the current user is allowed to edit or delete
+$can_edit_delete = in_array($_SESSION['role'], ['super_admin', 'manager']);
+
 // --- HANDLE DELETE ACTION ---
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_id'])) {
+if ($can_edit_delete && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_id'])) {
     try {
         $del_stmt = $conn->prepare("DELETE FROM tbl_booking WHERE BookingID = :id");
         $del_stmt->execute([':id' => $_POST['delete_id']]);
@@ -16,21 +19,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_id'])) {
 }
 
 // --- HANDLE UPDATE ACTION ---
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_booking'])) {
+if ($can_edit_delete && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_booking'])) {
     $new_code = trim($_POST['BookingCode']);
     $booking_id = $_POST['booking_id'];
 
     try {
-        // NEW: Check if this Booking Code already exists on a DIFFERENT booking ID
         $check_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_booking WHERE BookingCode = :code AND BookingID != :id");
         $check_stmt->execute([':code' => $new_code, ':id' => $booking_id]);
         $duplicate_count = $check_stmt->fetchColumn();
 
         if ($duplicate_count > 0) {
-            // If duplicate found, throw an error and STOP the update
             $error_msg = "Update Failed: The Booking Code '" . htmlspecialchars($new_code) . "' is already being used by another tour.";
         } else {
-            // If code is unique, proceed with the update
             $sql = "UPDATE tbl_booking SET 
                     BookingDate = :bdate, 
                     TourCompany = :company, 
@@ -214,7 +214,9 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <th>Meal</th>
                         <th>Guide</th>
                         <th>Status</th>
-                        <th class="text-center">Actions</th>
+                        <?php if ($can_edit_delete): ?>
+                            <th class="text-center">Actions</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -245,6 +247,7 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <?php endif; ?>
                             </td>
                             
+                            <?php if ($can_edit_delete): ?>
                             <td class="text-center">
                                 <div class="btn-group" role="group">
                                     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal<?= $row['BookingID'] ?>" title="Edit">
@@ -255,8 +258,10 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </button>
                                 </div>
                             </td>
+                            <?php endif; ?>
                         </tr>
 
+                        <?php if ($can_edit_delete): ?>
                         <div class="modal fade" id="editModal<?= $row['BookingID'] ?>" tabindex="-1" aria-hidden="true">
                             <div class="modal-dialog modal-lg">
                                 <div class="modal-content">
@@ -336,7 +341,7 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <div class="modal-body text-center py-4">
                                         <i class="fas fa-trash-alt fa-3x text-danger mb-3"></i>
                                         <p class="fs-5 mb-1">Are you sure you want to delete Booking <strong>#<?= htmlspecialchars($row['BookingID']) ?></strong>?</p>
-                                        <p class="text-muted mb-0"><strong>Company:</strong> <?= htmlspecialchars($row['TourCompany']) ?></p>
+                                        <p class="text-muted mb-0"><strong>Code:</strong> <?= htmlspecialchars($row['BookingCode']) ?></p>
                                         <p class="text-muted"><strong>Date:</strong> <?= date('d-m-Y', strtotime($row['BookingDate'])) ?></p>
                                         <p class="text-danger small mt-3 mb-0"><i class="fas fa-info-circle me-1"></i>This action cannot be undone.</p>
                                     </div>
@@ -350,6 +355,7 @@ $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </div>
                             </div>
                         </div>
+                        <?php endif; ?>
 
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -393,9 +399,13 @@ function getCleanTable() {
     let table = document.getElementById("bookingTable");
     let cloneTable = table.cloneNode(true);
     
+    <?php if ($can_edit_delete): ?>
+    // Only delete the last column if the user actually has the Actions column!
     for(let i = 0; i < cloneTable.rows.length; i++) {
         cloneTable.rows[i].deleteCell(-1); 
     }
+    <?php endif; ?>
+    
     return cloneTable;
 }
 

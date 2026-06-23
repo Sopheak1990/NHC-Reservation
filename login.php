@@ -1,18 +1,35 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once 'db_connect.php';
 
-// Redirect if already logged in
+// If already logged in, redirect web users (Mobile API ignores this)
 if (isset($_SESSION['user_id'])) {
-    header("Location: index.php");
-    exit;
+    if ($_SERVER['HTTP_ACCEPT'] !== 'application/json') {
+        header("Location: index.php");
+        exit;
+    }
 }
 
 $error = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
+    
+    // 1. THIS IS THE FIX: Check if data is coming as JSON (Mobile App) or POST (Web Browser)
+    $inputJSON = file_get_contents('php://input');
+    $inputData = json_decode($inputJSON, true);
+
+    if (isset($inputData['username']) && isset($inputData['password'])) {
+        // Mobile App JSON Data
+        $username = trim($inputData['username']);
+        $password = trim($inputData['password']);
+    } else {
+        // Standard Web Form Data
+        $username = isset($_POST['username']) ? trim($_POST['username']) : '';
+        $password = isset($_POST['password']) ? trim($_POST['password']) : '';
+    }
 
     if (!empty($username) && !empty($password)) {
         $stmt = $conn->prepare("SELECT * FROM tbl_users WHERE Username = :username");
@@ -20,18 +37,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && password_verify($password, $user['Password'])) {
+            session_regenerate_id(true);
+
             $_SESSION['user_id'] = $user['UserID'];
             $_SESSION['username'] = $user['Username'];
             $_SESSION['full_name'] = $user['FullName'];
             $_SESSION['role'] = $user['Role'];
 
-            header("Location: index.php");
-            exit;
+            // 2. THIS IS THE SECOND FIX: Send JSON back to the mobile app
+            if (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    "status" => "success", 
+                    "user" => [
+                        "id" => $user['UserID'], 
+                        "name" => $user['FullName'], 
+                        "role" => $user['Role']
+                    ]
+                ]);
+                exit; // Stop the script so it doesn't print the HTML below!
+            } else {
+                // Send web users to the dashboard
+                header("Location: index.php");
+                exit;
+            }
         } else {
             $error = "Invalid username or password.";
         }
     } else {
         $error = "Please fill in all fields.";
+    }
+
+    // If there is an error, and it's an API request, send JSON error
+    if (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) {
+        header('Content-Type: application/json');
+        echo json_encode(["status" => "error", "message" => $error]);
+        exit;
     }
 }
 ?>
