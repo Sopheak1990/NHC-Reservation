@@ -1,51 +1,75 @@
 <?php
-// Tell the mobile app to expect pure data, not a webpage
+header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
+header('Access-Control-Allow-Methods: GET');
+
 require_once 'db_connect.php';
 
 $filter = isset($_GET['filter']) ? $_GET['filter'] : 'today';
-$sql_condition = "";
-$params = [];
 
-// SMART DATE EXPRESSION
+// YOUR SMART DATE EXPRESSION
 $date_expr = "COALESCE(STR_TO_DATE(BookingDate, '%c/%e/%Y'), STR_TO_DATE(BookingDate, '%Y-%m-%d'), BookingDate)";
 
-switch ($filter) {
-    case 'month':
-        $sql_condition = "MONTH($date_expr) = :month AND YEAR($date_expr) = :year";
-        $params = [':month' => date('n'), ':year' => date('Y')];
-        break;
-    case 'year':
-        $sql_condition = "YEAR($date_expr) = :year";
-        $params = [':year' => date('Y')];
-        break;
-    case 'today':
-    default:
-        $sql_condition = "DATE($date_expr) = :today";
-        $params = [':today' => date('Y-m-d')];
-        break;
+$dateCondition = "";
+$params = [];
+
+// Apply Date Filters using your specific logic
+if ($filter === 'today') {
+    $dateCondition = "WHERE DATE($date_expr) = :today";
+    $params = [':today' => date('Y-m-d')];
+} elseif ($filter === 'week') {
+    $dateCondition = "WHERE YEARWEEK($date_expr, 1) = YEARWEEK(CURDATE(), 1)";
+} elseif ($filter === 'month') {
+    $dateCondition = "WHERE MONTH($date_expr) = :month AND YEAR($date_expr) = :year";
+    $params = [':month' => date('n'), ':year' => date('Y')];
+} elseif ($filter === 'year') {
+    $dateCondition = "WHERE YEAR($date_expr) = :year";
+    $params = [':year' => date('Y')];
 }
 
 try {
-    // 1. Get Aggregates
-    $dash_stmt = $conn->prepare("SELECT COUNT(*) as total_books, SUM(Pax) as total_pax FROM tbl_booking WHERE $sql_condition");
-    $dash_stmt->execute($params);
-    $dash_data = $dash_stmt->fetch(PDO::FETCH_ASSOC);
+    // 1. Get Total Bookings
+    $stmtTotal = $conn->prepare("SELECT COUNT(*) FROM tbl_booking $dateCondition");
+    $stmtTotal->execute($params);
+    $totalBookings = $stmtTotal->fetchColumn();
 
-    // 2. Get the actual list of tours
-    $list_stmt = $conn->prepare("SELECT * FROM tbl_booking WHERE $sql_condition ORDER BY $date_expr ASC");
-    $list_stmt->execute($params);
-    $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // 2. Get Confirmed Bookings
+    $confCond = $dateCondition ? $dateCondition . " AND Confirm = 'True'" : "WHERE Confirm = 'True'";
+    $stmtConfirmed = $conn->prepare("SELECT COUNT(*) FROM tbl_booking $confCond");
+    $stmtConfirmed->execute($params);
+    $confirmedBookings = $stmtConfirmed->fetchColumn();
 
-    // Output pure JSON
+    // 3. Get Pending Bookings
+    $pendCond = $dateCondition ? $dateCondition . " AND Confirm = 'False'" : "WHERE Confirm = 'False'";
+    $stmtPending = $conn->prepare("SELECT COUNT(*) FROM tbl_booking $pendCond");
+    $stmtPending->execute($params);
+    $pendingBookings = $stmtPending->fetchColumn();
+
+    // 4. Get Total Pax (Passengers)
+    $stmtPax = $conn->prepare("SELECT SUM(Pax) FROM tbl_booking $dateCondition");
+    $stmtPax->execute($params);
+    $totalPax = $stmtPax->fetchColumn();
+
+    // 5. Get Bookings FOR THE SELECTED TIMEFRAME
+    // Notice we added $dateCondition here and changed to ASC for chronological schedule order!
+    // I also removed "LIMIT 5" so if you have 8 tours today, you see all 8. (Add LIMIT 5 back if you want to restrict it).
+    $stmtRecent = $conn->prepare("SELECT BookingID, TourCompany, BookingDate, Confirm, Pax, TourGuideName, TourGuideContact, Meal FROM tbl_booking $dateCondition ORDER BY $date_expr ASC");
+    $stmtRecent->execute($params); // <-- Must pass $params here too!
+    $recentBookings = $stmtRecent->fetchAll(PDO::FETCH_ASSOC);
+
+    // Send the package back to the mobile app
     echo json_encode([
         "status" => "success",
-        "total_books" => $dash_data['total_books'] ?? 0,
-        "total_pax" => $dash_data['total_pax'] ?? 0,
-        "recent_bookings" => $active_tours
+        "data" => [
+            "total_bookings" => (int)$totalBookings,
+            "confirmed" => (int)$confirmedBookings,
+            "pending" => (int)$pendingBookings,
+            "total_pax" => (int)$totalPax ?: 0, 
+            "recent_bookings" => $recentBookings
+        ]
     ]);
 
 } catch (PDOException $e) {
-    echo json_encode(["status" => "error", "message" => "Database error: " . $e->getMessage()]);
+    echo json_encode(["status" => "error", "message" => "Database Error: " . $e->getMessage()]);
 }
 ?>

@@ -1,4 +1,3 @@
-
 <?php
 require_once 'auth_check.php';
 // All three roles are allowed on this page
@@ -13,10 +12,10 @@ $params = [];
 $overview_title = "";
 $card_label = "";
 
-// SMART DATE EXPRESSION: Tells MySQL to understand both "MM/DD/YYYY" (from CSV) and "YYYY-MM-DD" (from forms)
+// SMART DATE EXPRESSION: Unifies all weird database dates into standard YYYY-MM-DD
 $date_expr = "COALESCE(STR_TO_DATE(BookingDate, '%c/%e/%Y'), STR_TO_DATE(BookingDate, '%Y-%m-%d'), BookingDate)";
 
-// Set queries based on timeframe filter using the smart date expression
+// Set queries based on timeframe filter
 switch ($filter) {
     case 'month':
         $overview_title = "This Month's Overview";
@@ -37,9 +36,8 @@ switch ($filter) {
     case 'today':
     default:
         $overview_title = "Today's Overview";
-        $date_badge = date('F j, Y'); // Formatted nicely for the dashboard header
+        $date_badge = date('F j, Y'); 
         $card_label = "Today's";
-        // Compare the actual calendar date, avoiding text-match errors
         $sql_condition = "DATE($date_expr) = :today";
         $params = [':today' => date('Y-m-d')];
         $filter = 'today'; 
@@ -51,8 +49,8 @@ $dash_stmt = $conn->prepare("SELECT COUNT(*) as total_books, SUM(Pax) as total_p
 $dash_stmt->execute($params);
 $dash_data = $dash_stmt->fetch(PDO::FETCH_ASSOC);
 
-// 2. Get the actual list of tours for the selected timeframe (Sorted by the smart date)
-$list_stmt = $conn->prepare("SELECT * FROM tbl_booking WHERE $sql_condition ORDER BY $date_expr ASC");
+// 2. Get the actual list of tours AND return the cleaned date as 'StandardDate'
+$list_stmt = $conn->prepare("SELECT *, $date_expr AS StandardDate FROM tbl_booking WHERE $sql_condition ORDER BY StandardDate ASC");
 $list_stmt->execute($params);
 $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -91,7 +89,11 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="card bg-warning text-dark shadow-sm border-0">
             <div class="card-body">
                 <h5 class="card-title">Quick Action</h5>
-                <a href="add_booking.php" class="btn btn-dark mt-2"><i class="fas fa-plus"></i> Add New Booking</a>
+                <?php if (in_array($_SESSION['role'] ?? '', ['super_admin', 'manager'])): ?>
+                    <a href="add_booking.php" class="btn btn-dark mt-2"><i class="fas fa-plus"></i> Add New Booking</a>
+                <?php else: ?>
+                    <button class="btn btn-dark mt-2 disabled" title="Contact an admin to add bookings"><i class="fas fa-lock"></i> Add New Booking</button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -118,7 +120,7 @@ $active_tours = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
                     <?php if (count($active_tours) > 0): ?>
                         <?php foreach ($active_tours as $tour): ?>
                         <tr>
-                            <td><?= date('l, d-m-Y', strtotime($tour['BookingDate'])) ?></td>
+                            <td><?= date('l, d-m-Y', strtotime($tour['StandardDate'])) ?></td>
                             <td><strong class="text-primary"><?= htmlspecialchars($tour['TourCompany']) ?></strong></td>
                             <td>
                                 <?php if($tour['Meal'] == 'Lunch'): ?>
