@@ -37,22 +37,23 @@ $user_role = isset($_SESSION['role']) ? ucfirst(str_replace('_', ' ', $_SESSION[
         /* Logo sizing */
         .sidebar-logo { max-width: 120px; max-height: 120px; object-fit: contain; }
 
-        /* Logout styles */
-        .logout-link { 
-            margin-top: auto; 
-            margin-bottom: 20px; 
-            border-top: 1px solid #4f5962; 
-            padding-top: 20px !important; 
-            transition: all 0.3s ease !important;
-            color: #dc3545 !important;
+        /* --- PERFECTLY NORMAL LOGOUT STYLES --- */
+        .logout-wrapper {
+            margin-top: auto; /* Pushes to the bottom safely */
+            margin-bottom: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #4f5962;
         }
-        .sidebar .logout-link:hover { 
-            background-color: #dc3545 !important; 
-            color: #ffffff !important; 
-            padding-left: 30px !important; 
+        
+        /* Makes the logout text red normally */
+        .sidebar .logout-wrapper a {
+            color: #dc3545; 
         }
-        .sidebar .logout-link:hover i {
-            transform: translateX(5px) !important;
+
+        /* Makes the background red instead of blue on hover (acts just like other menu items) */
+        .sidebar .logout-wrapper a:hover {
+            background-color: #dc3545;
+            color: white;
         }
     </style>
 </head>
@@ -87,9 +88,11 @@ $user_role = isset($_SESSION['role']) ? ucfirst(str_replace('_', ' ', $_SESSION[
         </a>
         <?php endif; ?>
 
-        <a href="logout.php" class="logout-link">
-            <i class="fas fa-sign-out-alt me-2"></i> Log Out
-        </a>
+        <div class="logout-wrapper">
+            <a href="logout.php">
+                <i class="fas fa-sign-out-alt me-2"></i> Log Out
+            </a>
+        </div>
     </div>
 
     <nav class="navbar navbar-expand-lg navbar-light py-3 px-4">
